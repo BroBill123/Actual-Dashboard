@@ -1511,6 +1511,27 @@ function tickExams(){
       new Date(now.getFullYear(),now.getMonth(),now.getDate()+1)-now);
   })();
 
+  // ── Real-time sync ──────────────────────
+  // Re-fetch and re-render whenever another device saves
+  sb.channel('dashboard_sync')
+    .on('postgres_changes',{
+      event:'UPDATE',
+      schema:'public',
+      table:'dashboard_data',
+      filter:'key=eq.db'
+    }, async ()=>{
+      const {data,error} = await sb
+        .from('dashboard_data').select('value').eq('key','db').single();
+      if(!error && data?.value){
+        const src = JSON.parse(data.value);
+        KEYS.forEach(k=>{ if(src[k]!==undefined) DB[k]=src[k]; });
+        KEYS.forEach(k=>localStorage.setItem('td2_'+k,JSON.stringify(DB[k])));
+        renderAll();
+        showToast('Synced ✓');
+      }
+    })
+    .subscribe();
+
   showToast('Synced ✓');
 })();
 </script>
