@@ -124,7 +124,8 @@ html.dark .cal-school-band{background:rgba(35,50,68,.3);border-left-color:rgba(8
 .cal-resize::after{content:'';display:block;margin:4px auto 0;width:22px;height:2px;border-radius:1px;background:var(--ev-bd,var(--accent));opacity:.4}
 
 /* ── Week ── */
-.week-days{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;flex:1}
+.week-days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;flex:1}
+.week-day-col.is-weekend{background:var(--surface-alt);opacity:.85}
 .week-day-col{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 5px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s}
 .week-day-col:hover{background:var(--surface-alt)}
 .week-day-col.is-today{background:var(--accent-light);border-color:rgba(90,160,124,.3)}
@@ -211,6 +212,8 @@ html.dark .due-pill.due-overdue{background:var(--danger-light);color:var(--dange
   color:var(--faint);line-height:1.2;
 }
 .habit-day-lbl-today{color:var(--accent)}
+.habit-day-lbl-weekend{color:var(--border);opacity:.7}
+.habit-dot-weekend{border-style:dashed;opacity:.7}
 .habit-day-dow{font-size:8px;font-weight:400;color:var(--faint)}
 .habit-day-lbl-today .habit-day-dow{color:var(--accent-mid)}
 .habit-streak-lbl{width:32px;font-size:9px;color:var(--faint);text-align:right;text-transform:uppercase;letter-spacing:.3px;margin-left:8px}
@@ -481,7 +484,7 @@ const TERM_START   = new Date(2026,3,21);
 const TERM_END_DAY = new Date(2026,5,26);
 const TERM_END_MS  = new Date(2026,5,26,23,59,59).getTime();
 const TOTAL_SCHOOL_DAYS = 49;
-const DAY_ABBR   = ['Mon','Tue','Wed','Thu','Fri'];
+const DAY_ABBR   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 const CAL_START = 7;
@@ -1036,22 +1039,18 @@ function renderWeek(){
   const fri=new Date(mon);fri.setDate(mon.getDate()+4);
   const wn=weekNum(mon);const{min,max}=weekBounds();
   let daysHTML='';
-  for(let i=0;i<5;i++){
+  for(let i=0;i<7;i++){
     const d=new Date(mon);d.setDate(mon.getDate()+i);
     const dk=dkey(d);
     const recurEvts=getRecurringForDate(d);
     const userEvts=DB.calEvents[dk]||[];
     const allEvts=[...recurEvts,...userEvts];
-    const total=allEvts.length;
     const isToday=dk===dkey(today),isViewing=dk===dkey(viewDate),isPast=d<today&&!isToday;
-    let cls='week-day-col'+(isToday?' is-today':isViewing?' is-viewing':'')+(isPast?' is-past':'');
+    const isWeekend=d.getDay()===0||d.getDay()===6;
+    let cls='week-day-col'+(isToday?' is-today':isViewing?' is-viewing':'')+(isPast?' is-past':'')+(isWeekend?' is-weekend':'');
 
-    // Build name list — truncate to 4, show "+N more" if needed
-    const MAX_SHOW = 4;
-    const names = allEvts
-      .slice()
-      .sort((a,b)=>a.startMin-b.startMin)
-      .map(e=>e.name);
+    const MAX_SHOW = 3;
+    const names = allEvts.slice().sort((a,b)=>a.startMin-b.startMin).map(e=>e.name);
     const shown = names.slice(0, MAX_SHOW);
     const extra = names.length - shown.length;
     const namesHTML = shown.map(n=>`<div class="wd-evt">${esc(n)}</div>`).join('')
@@ -1209,15 +1208,16 @@ function renderHabits(){
   const {min:hmin, max:hmax} = weekBounds();
 
   // Build day headers with actual date numbers
-  const dayHeadsHTML = Array.from({length:5},(_,i)=>{
+  const dayHeadsHTML = Array.from({length:7},(_,i)=>{
     const d=new Date(mon); d.setDate(mon.getDate()+i);
     const isToday2 = dkey(d)===dkey(today);
-    return `<div class="habit-day-lbl${isToday2?' habit-day-lbl-today':''}">${d.getDate()}<br><span class="habit-day-dow">${DAY_ABBR[i][0]}</span></div>`;
+    const isWknd = d.getDay()===0||d.getDay()===6;
+    return `<div class="habit-day-lbl${isToday2?' habit-day-lbl-today':''}${isWknd?' habit-day-lbl-weekend':''}">${d.getDate()}<br><span class="habit-day-dow">${DAY_ABBR[i][0]}</span></div>`;
   }).join('');
 
   // Week range label
-  const fri = new Date(mon); fri.setDate(mon.getDate()+4);
-  const wkRange = `${mon.getDate()} ${MONTH_ABBR[mon.getMonth()]} – ${fri.getDate()} ${MONTH_ABBR[fri.getMonth()]}`;
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  const wkRange = `${mon.getDate()} ${MONTH_ABBR[mon.getMonth()]} – ${sun.getDate()} ${MONTH_ABBR[sun.getMonth()]}`;
   const wn = weekNum(mon);
   const wkLabel = (wn>=1&&wn<=10) ? `Week ${wn}` : wkRange;
 
@@ -1225,13 +1225,14 @@ function renderHabits(){
     ? `<div class="empty-msg">No habits yet — add one below</div>`
     : DB.habits.map(h=>{
         let dots='';
-        for(let i=0;i<5;i++){
+        for(let i=0;i<7;i++){
           const d=new Date(mon); d.setDate(mon.getDate()+i);
           const dk=dkey(d);
           const isFuture = d>today;
           const isTodayDot = dk===dkey(today);
+          const isWknd = d.getDay()===0||d.getDay()===6;
           const logged = DB.habitLog[dk]?.[h.id];
-          let cls='habit-dot'+(logged?' logged':'')+(isFuture?' future':'')+(isTodayDot&&!logged?' is-today':'');
+          let cls='habit-dot'+(logged?' logged':'')+(isFuture?' future':'')+(isTodayDot&&!logged?' is-today':'')+(isWknd?' habit-dot-weekend':'');
           dots+=`<div class="${cls}" ${isFuture?'':` onclick="toggleHabit('${dk}','${h.id}')"`}></div>`;
         }
         // Streak: consecutive logged days back from today (always from actual today)
@@ -1531,6 +1532,30 @@ function tickExams(){
       }
     })
     .subscribe();
+
+  // ── Polling fallback (every 5s) ─────────
+  // Catches sync when WebSocket is blocked (e.g. local file://)
+  let lastSavedValue = null;
+  setInterval(async ()=>{
+    try{
+      const {data,error} = await sb
+        .from('dashboard_data').select('value').eq('key','db').single();
+      if(!error && data?.value && data.value !== lastSavedValue){
+        if(lastSavedValue !== null){
+          // Only update if it changed and wasn't us who saved it
+          const src = JSON.parse(data.value);
+          const localPayload = JSON.stringify(Object.fromEntries(KEYS.map(k=>[k,DB[k]])));
+          if(data.value !== localPayload){
+            KEYS.forEach(k=>{ if(src[k]!==undefined) DB[k]=src[k]; });
+            KEYS.forEach(k=>localStorage.setItem('td2_'+k,JSON.stringify(DB[k])));
+            renderAll();
+            showToast('Synced ✓');
+          }
+        }
+        lastSavedValue = data.value;
+      }
+    }catch(e){}
+  }, 5000);
 
   showToast('Synced ✓');
 })();
