@@ -1512,50 +1512,28 @@ function tickExams(){
       new Date(now.getFullYear(),now.getMonth(),now.getDate()+1)-now);
   })();
 
-  // ── Real-time sync ──────────────────────
-  // Re-fetch and re-render whenever another device saves
-  sb.channel('dashboard_sync')
-    .on('postgres_changes',{
-      event:'UPDATE',
-      schema:'public',
-      table:'dashboard_data',
-      filter:'key=eq.db'
-    }, async ()=>{
+  // ── Polling sync (every 3s) ─────────────
+  let lastKnownValue = null;
+  // Seed lastKnownValue after initial load so first poll doesn't re-render
+  try{
+    const {data} = await sb.from('dashboard_data').select('value').eq('key','db').single();
+    if(data?.value) lastKnownValue = data.value;
+  }catch(e){}
+
+  setInterval(async ()=>{
+    try{
       const {data,error} = await sb
         .from('dashboard_data').select('value').eq('key','db').single();
-      if(!error && data?.value){
+      if(!error && data?.value && data.value !== lastKnownValue){
+        lastKnownValue = data.value;
         const src = JSON.parse(data.value);
         KEYS.forEach(k=>{ if(src[k]!==undefined) DB[k]=src[k]; });
         KEYS.forEach(k=>localStorage.setItem('td2_'+k,JSON.stringify(DB[k])));
         renderAll();
         showToast('Synced ✓');
       }
-    })
-    .subscribe();
-
-  // ── Polling fallback (every 5s) ─────────
-  // Catches sync when WebSocket is blocked (e.g. local file://)
-  let lastSavedValue = null;
-  setInterval(async ()=>{
-    try{
-      const {data,error} = await sb
-        .from('dashboard_data').select('value').eq('key','db').single();
-      if(!error && data?.value && data.value !== lastSavedValue){
-        if(lastSavedValue !== null){
-          // Only update if it changed and wasn't us who saved it
-          const src = JSON.parse(data.value);
-          const localPayload = JSON.stringify(Object.fromEntries(KEYS.map(k=>[k,DB[k]])));
-          if(data.value !== localPayload){
-            KEYS.forEach(k=>{ if(src[k]!==undefined) DB[k]=src[k]; });
-            KEYS.forEach(k=>localStorage.setItem('td2_'+k,JSON.stringify(DB[k])));
-            renderAll();
-            showToast('Synced ✓');
-          }
-        }
-        lastSavedValue = data.value;
-      }
     }catch(e){}
-  }, 5000);
+  }, 3000);
 
   showToast('Synced ✓');
 })();
